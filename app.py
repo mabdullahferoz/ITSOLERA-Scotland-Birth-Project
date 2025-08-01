@@ -4,6 +4,8 @@ import plotly.express as px
 import calendar
 import matplotlib.pyplot as plt
 import seaborn as sns
+from prophet import Prophet
+from prophet.plot import plot_plotly
 
 # -----------------------
 # PAGE CONFIG
@@ -45,14 +47,14 @@ st.markdown("""
 # HEADER
 # -----------------------
 st.markdown('<div class="main-heading">👶 Scottish Births Analytics Dashboard</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-heading">Explore trends in birth statistics by region, month, and age group</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-heading">Explore trends in birth statistics by region, month, and age group — now with forecasting!</div>', unsafe_allow_html=True)
 
 # -----------------------
 # LOAD DATA
 # -----------------------
 @st.cache_data
 def load_data():
-    df = pd.read_excel("monthly region data.xlsx", sheet_name="Data")
+    df = pd.read_excel("monthly region data.xlsx")
     df['year'] = df['year'].astype(int)
     df['month'] = df['month'].astype(str)
     return df
@@ -77,6 +79,12 @@ regions = st.sidebar.multiselect("Regions", sorted(df['region'].unique()), defau
 
 age_cols = ['<20', '20-29', '30-39', '40+']
 selected_ages = st.sidebar.multiselect("Age Groups", age_cols, default=age_cols)
+
+# Forecast controls
+st.sidebar.markdown("---")
+st.sidebar.subheader("📈 Forecast Settings")
+enable_forecast = st.sidebar.checkbox("Enable Birth Forecasting", value=False)
+forecast_months = st.sidebar.slider("Forecast Months Ahead", 3, 36, 12)
 
 # -----------------------
 # FILTER DATA
@@ -107,7 +115,7 @@ with kpi4:
 st.markdown("---")
 
 # -----------------------
-# SECTION 1: OVERVIEW CHARTS
+# OVERVIEW GRAPHS
 # -----------------------
 st.subheader("📊 Overview Trends")
 col1, col2 = st.columns(2)
@@ -127,7 +135,7 @@ with col2:
     st.plotly_chart(fig_monthly, use_container_width=True)
 
 # -----------------------
-# SECTION 2: DEMOGRAPHICS
+# DISTRIBUTION
 # -----------------------
 st.subheader("🧬 Birth Distribution Insights")
 col3, col4 = st.columns(2)
@@ -146,25 +154,25 @@ with col4:
     st.plotly_chart(fig_region_pie, use_container_width=True)
 
 # -----------------------
-# SECTION 3: DETAILED TRENDS
+# DETAILED TRENDS
 # -----------------------
 st.subheader("📈 Detailed Trends")
 
-# Area chart for age groups over time
+# Age group area chart
 age_trend = filtered_df.groupby('year')[selected_ages].sum().reset_index()
 fig_age_trend = px.area(age_trend, x='year', y=selected_ages,
                         title="Age Group Birth Trends Over Time",
                         template="simple_white")
 st.plotly_chart(fig_age_trend, use_container_width=True)
 
-# Line chart for region trends
+# Region line chart
 region_trend = filtered_df.groupby(['year', 'region'])['birth_count'].sum().reset_index()
 fig_region_trend = px.line(region_trend, x='year', y='birth_count', color='region',
                            title="Yearly Births by Region", template="plotly_white")
 st.plotly_chart(fig_region_trend, use_container_width=True)
 
 # -----------------------
-# SECTION 4: HEATMAP
+# HEATMAP
 # -----------------------
 st.subheader("🔥 Monthly Births by Region Heatmap")
 
@@ -172,3 +180,31 @@ heat_df = filtered_df.groupby(['region', 'month'])['birth_count'].mean().unstack
 fig, ax = plt.subplots(figsize=(12, 5))
 sns.heatmap(heat_df, cmap="YlOrRd", annot=True, fmt=".0f", linewidths=.5, ax=ax)
 st.pyplot(fig)
+
+# -----------------------
+# PROPHET FORECAST
+# -----------------------
+if enable_forecast:
+    st.subheader("🔮 Forecast: Future Birth Trends with Prophet")
+
+    prophet_df = filtered_df.groupby(['year', 'month'])['birth_count'].sum().reset_index()
+    prophet_df['month'] = prophet_df['month'].apply(lambda x: list(calendar.month_name).index(x))
+    prophet_df['ds'] = pd.to_datetime(dict(year=prophet_df['year'], month=prophet_df['month'], day=1))
+    prophet_df = prophet_df[['ds', 'birth_count']]
+    prophet_df.columns = ['ds', 'y']
+
+    model = Prophet(yearly_seasonality=True)
+    model.fit(prophet_df)
+
+    future = model.make_future_dataframe(periods=forecast_months, freq='MS')
+    forecast = model.predict(future)
+
+    fig_forecast = plot_plotly(model, forecast)
+    fig_forecast.update_layout(title="📅 Forecasted Monthly Births", xaxis_title="Date", yaxis_title="Births")
+    st.plotly_chart(fig_forecast, use_container_width=True)
+
+    forecast_display = forecast[['ds', 'yhat', 'yhat_lower', 'yhat_upper']].tail(forecast_months)
+    forecast_display.columns = ['Date', 'Forecast', 'Lower Bound', 'Upper Bound']
+    forecast_display['Date'] = forecast_display['Date'].dt.strftime('%b %Y')
+    st.markdown("##### 📋 Forecast Summary Table")
+    st.dataframe(forecast_display.set_index('Date').style.format("{:.0f}"))

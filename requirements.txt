@@ -4,3 +4,4 @@ seaborn
 matplotlib
 pandas
 openpyxl
+nbformat>=4.2.0
