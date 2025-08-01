@@ -2,9 +2,12 @@ streamlit
 plotly
 seaborn
 matplotlib
-numpy
 pandas
 openpyxl
 nbformat>=4.2.0
 prophet
-pmdarima
+numpy
+Cython
+setuptools
+wheel
+pmdarima==2.0.4
