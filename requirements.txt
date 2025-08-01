@@ -2,6 +2,7 @@ streamlit
 plotly
 seaborn
 matplotlib
+numpy
 pandas
 openpyxl
 nbformat>=4.2.0
